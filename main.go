@@ -44,7 +44,7 @@ func main() {
 	endpoint := flag.String("endpoint", "http://localhost:8080/config", "HTTP endpoint to poll")
 	interval := flag.Duration("interval", 30*time.Second, "Polling interval (e.g. 30s, 1m)")
 	//envPathFlag := flag.String("env", "~/sp1-cluster/infra/.env", "Path to .env file")
-	envPathFlag := flag.String("env", ".env", "Path to .env file")
+	envPathFlag := flag.String("env", "~/sp1-cluster/infra/.env", "Path to .env file")
 	dryRun := flag.Bool("dry-run", false, "If true, don't run systemctl commands (good for local testing)")
 	flag.Parse()
 

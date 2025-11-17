@@ -1,0 +1,19 @@
+[Unit]
+Description=Succinct bidder env watcher
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=YOUR_UNIX_USER
+Group=YOUR_UNIX_USER
+Environment=HOME=/home/YOUR_UNIX_USER
+WorkingDirectory=/home/YOUR_UNIX_USER
+ExecStart=/usr/local/bin/bidder-watcher -endpoint=https://dashboard.succinct.xyz/config -interval=30s -env=/home/YOUR_UNIX_USER/sp1-cluster/infra/.env
+Restart=on-failure
+RestartSec=5s
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
