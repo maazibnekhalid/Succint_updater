@@ -6,7 +6,7 @@ autossh -M 0 -fNT \
   -o ServerAliveInterval=30 \
   -o ServerAliveCountMax=3 \
   -R 9000:localhost:8080 \
-  user@remote-host                              #for auto restart and keep port open at all times
+  user@remote-host                              #for auto restart and keep port open at all  times
 
 ```
 # Bidder Watcher
