@@ -12,14 +12,15 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 )
 
 const (
-	envSmallBid       = "SMALL_BID"
-	envLargeBid       = "LARGE_BID"
-	envMaxConcurrency = "MAX_CONCURRENCY"
+	envSmallBid       = "BID_SMALL_AMOUNT"
+	envLargeBid       = "BID_LARGE_AMOUNT"
+	envMaxConcurrency = "BIDDER_MAX_CONCURRENT_PROOFS"
 )
 
 // ConfigPayload matches the JSON from the Succinct dashboard.
@@ -44,7 +45,7 @@ func main() {
 	endpoint := flag.String("endpoint", "http://localhost:8080/config", "HTTP endpoint to poll")
 	interval := flag.Duration("interval", 30*time.Second, "Polling interval (e.g. 30s, 1m)")
 	//envPathFlag := flag.String("env", "~/sp1-cluster/infra/.env", "Path to .env file")
-	envPathFlag := flag.String("env", "~/sp1-cluster/infra/.env", "Path to .env file")
+	envPathFlag := flag.String("env", "~/Desktop/succinct_clone/infra/.env", "Path to .env file")
 	dryRun := flag.Bool("dry-run", false, "If true, don't run systemctl commands (good for local testing)")
 	flag.Parse()
 
@@ -179,67 +180,50 @@ func formatFloat(f float64) string {
 // updateEnvFile parses the existing .env, modifies only changed vars (sed-like),
 // and rewrites atomically.
 func updateEnvFile(path string, updates map[string]string) error {
-	var (
-		lines []string
-	)
+	var content string
 
 	originalInfo, statErr := os.Stat(path)
 	if statErr == nil {
-		// File exists; read it.
 		data, err := os.ReadFile(path)
 		if err != nil {
 			return fmt.Errorf("read .env: %w", err)
 		}
-		scanner := bufio.NewScanner(bytes.NewReader(data))
-		for scanner.Scan() {
-			lines = append(lines, scanner.Text())
-		}
-		if err := scanner.Err(); err != nil {
-			return fmt.Errorf("scan .env: %w", err)
-		}
+		content = string(data)
 	} else if !os.IsNotExist(statErr) {
 		return fmt.Errorf("stat .env: %w", statErr)
 	}
 
-	// Track which keys we changed so we know what to append later.
-	changed := make(map[string]bool)
-	for k := range updates {
-		changed[k] = false
+	changed := make(map[string]bool, len(updates))
+	for key, val := range updates {
+		re := regexp.MustCompile(fmt.Sprintf(`(?m)^(export\s+)?%s=.*$`, regexp.QuoteMeta(key)))
+		replaced := false
+		content = re.ReplaceAllStringFunc(content, func(line string) string {
+			matches := re.FindStringSubmatch(line)
+			exportPrefix := matches[1]
+			replaced = true
+			return fmt.Sprintf("%s%s=%s", exportPrefix, key, val)
+		})
+		changed[key] = replaced
 	}
 
-	for i, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+	var builder strings.Builder
+	builder.Grow(len(content) + 64)
+	builder.WriteString(content)
+	hasTrailingNewline := strings.HasSuffix(content, "\n")
+
+	for key, val := range updates {
+		if changed[key] {
 			continue
 		}
-
-		exportPrefix := ""
-		if strings.HasPrefix(trimmed, "export ") {
-			exportPrefix = "export "
-			trimmed = strings.TrimSpace(trimmed[len("export "):])
+		if builder.Len() > 0 && !hasTrailingNewline {
+			builder.WriteByte('\n')
+			hasTrailingNewline = true
 		}
-
-		idx := strings.Index(trimmed, "=")
-		if idx <= 0 {
-			continue
-		}
-
-		key := strings.TrimSpace(trimmed[:idx])
-		if newVal, ok := updates[key]; ok {
-			lines[i] = fmt.Sprintf("%s%s=%s", exportPrefix, key, newVal)
-			changed[key] = true
-		}
+		builder.WriteString(fmt.Sprintf("%s=%s\n", key, val))
+		hasTrailingNewline = true
 	}
 
-	// Append keys that were not present.
-	for k, v := range updates {
-		if !changed[k] {
-			lines = append(lines, fmt.Sprintf("%s=%s", k, v))
-		}
-	}
-
-	// Join lines and ensure trailing newline.
-	content := strings.Join(lines, "\n")
+	content = builder.String()
 	if !strings.HasSuffix(content, "\n") {
 		content += "\n"
 	}
